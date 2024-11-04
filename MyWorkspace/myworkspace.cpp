@@ -118,7 +118,7 @@ DONE:
 
 
 // Processes locations.
-bool ProcessLocations(std::vector<RunningProcess>& processes, std::vector<ProcessLocation>& locations)
+bool ProcessLocations(const std::vector<RunningProcess>& processes, const std::vector<ProcessLocation>& locations)
 {
 	char buffer[1024];
 	ZeroMemory(buffer, 1024);
@@ -153,95 +153,127 @@ bool ProcessLocations(std::vector<RunningProcess>& processes, std::vector<Proces
 }
 
 
+bool FindLocationForProcessAndTitle(const RunningProcess& process, const std::vector<ProcessLocation>& locations, ProcessLocation& outLocation)
+{
+	bool result = false;
+
+	// match by image name and title.
+	for (int idx = 0; idx < locations.size(); idx++)
+	{
+		const ProcessLocation& location = locations[idx];
+		if (!equals(process.ImageName, location.ImageName)) continue; //for
+
+		if (strnlen_s(process.WindowTitle, 1024) > 0 &&
+			strnlen_s(location.WindowTitle, 1024) > 0)
+		{
+			if (equals(process.WindowTitle, location.WindowTitle))
+			{
+				outLocation = location;
+				result = true;
+				break;
+			}
+		}
+	}
+
+	if (result) return result;
+
+	// could not match by title, find the 1st one without a window title, by image name only.
+	for (int idx = 0; idx < locations.size(); idx++)
+	{
+		const ProcessLocation& location = locations[idx];
+		if (!equals(process.ImageName, location.ImageName)) continue; //for
+
+		if (strnlen_s(location.WindowTitle, 1024) < 1)
+		{
+			outLocation = location;
+			result = true;
+			break;
+		}
+	}
+
+
+	return result;
+
+}
+
 
 // RepositionProcess
-void RepositionProcess(const RunningProcess& process, std::vector<ProcessLocation>& locations)
+void RepositionProcess(const RunningProcess& process, const std::vector<ProcessLocation>& locations)
 {
 	char buffer[1024];
 	ZeroMemory(buffer, 1024);
 
-	for (int lidx = 0; lidx < locations.size(); lidx++)
+	// DO NOT UPDATE PROGRAM MANAGER
+	if (equals(process.WindowTitle, "Program Manager")) return;
+
+	// MINIMIZED?
+	if (process.IsMinimized)
 	{
-		const ProcessLocation& location = locations[lidx];
-		if (!equals(process.ImageName, location.ImageName)) continue;			// for
-		if (strnlen_s(location.WindowTitle, 1024) > 0)
-		{
-			if (!equals(process.WindowTitle, location.WindowTitle)) continue;	// for
-		} //if
+		ShowWindow(process.WindowHandle, SW_RESTORE);
+	} //if
 
-		// DO NOT UPDATE PROGRAM MANAGER
-		if (equals(process.WindowTitle, "Program Manager")) continue;			// for
-
-		// MINIMIZED?
-		if (process.IsMinimized)
-		{
-			ShowWindow(process.WindowHandle, SW_RESTORE);
-		} //if
+	ProcessLocation location;
+	if (!FindLocationForProcessAndTitle(process, locations, location)) return;
 
 
-		sprintf_s(buffer, "RepositionProcess FOUND location.ImageName: '%s', Window: '%s'\0", location.ImageName, process.WindowTitle);  debug(buffer);
+	sprintf_s(buffer, "RepositionProcess FOUND location.ImageName: '%s', Window: '%s'\0", location.ImageName, process.WindowTitle);  debug(buffer);
 
-		RECT newpos;
-		newpos.right = (long)((float)ScreenDimensions.right * location.PercentageWidth);
-		newpos.bottom = (long)((float)ScreenDimensions.bottom * location.PercentageHeight);
+	RECT newpos;
+	newpos.right = (long)((float)ScreenDimensions.right * location.PercentageWidth);
+	newpos.bottom = (long)((float)ScreenDimensions.bottom * location.PercentageHeight);
 
-		long halfleft = newpos.right / 2L;
-		long halftop = newpos.bottom / 2L;
+	long halfleft = newpos.right / 2L;
+	long halftop = newpos.bottom / 2L;
 
-		if (location.AbsoluteLocation)
-		{
-			halfleft = 0L;
-			halftop = 0L;
-		} //if
+	if (location.AbsoluteLocation)
+	{
+		halfleft = 0L;
+		halftop = 0L;
+	} //if
 
-		newpos.left = (long)((float)ScreenDimensions.right * location.PercentageWidthLocation) - halfleft;
-		newpos.top = (long)((float)ScreenDimensions.bottom * location.PercentageHeightLocation) - halftop;
+	newpos.left = (long)((float)ScreenDimensions.right * location.PercentageWidthLocation) - halfleft;
+	newpos.top = (long)((float)ScreenDimensions.bottom * location.PercentageHeightLocation) - halftop;
 
-		if (process.WindowHandle == firstChromeInstanceHWND)
-		{
-			newpos.top -= 100;
-			newpos.left += 100;
-		}
-		
-		// tiling?
-		if (location.Tile)
-		{
-			if (tileMap.find(location.ImageName) == tileMap.end())
-			{
-				TileLocation tl;
-				tileMap.emplace(location.ImageName, tl);	// copy
-			} //if
-
-			if (tileMap[location.ImageName].Left < 1L)
-			{
-				tileMap[location.ImageName].Left = newpos.left;
-				tileMap[location.ImageName].Top = newpos.top;
-			} //if
-			else
-			{
-				// tile from bottom to top
-				// then from right to left
-				long top = tileMap[location.ImageName].Top - newpos.bottom - 3;
-				if (top < 0L)
-				{
-					top = newpos.top;
-					tileMap[location.ImageName].Left -= (newpos.right + 3);
-				} //if
-
-				newpos.top = top;
-				newpos.left = tileMap[location.ImageName].Left;
-
-				tileMap[location.ImageName].Top = newpos.top;
-			} //else
-		} //if
-
-		sprintf_s(buffer, "RepositionProcess \t NEW POS: width: %d, height: %d, left: %d, top: %d\0", newpos.right, newpos.bottom, newpos.left, newpos.top);  debug(buffer);
-		SetWindowPos(process.WindowHandle, NULL, newpos.left, newpos.top, newpos.right, newpos.bottom, NULL);
-		//FlashWindow(process.WindowHandle, true);
-		//SetForegroundWindow(process.WindowHandle);
-		//ShowWindow(process.WindowHandle, SW_RESTORE);
-		//Sleep(100);
+	if (process.WindowHandle == firstChromeInstanceHWND)
+	{
+		newpos.top -= 100;
+		newpos.left += 100;
 	}
+		
+	// tiling?
+	if (location.Tile)
+	{
+		if (tileMap.find(location.ImageName) == tileMap.end())
+		{
+			TileLocation tl;
+			tileMap.emplace(location.ImageName, tl);	// copy
+		} //if
+
+		if (tileMap[location.ImageName].Left < 1L)
+		{
+			tileMap[location.ImageName].Left = newpos.left;
+			tileMap[location.ImageName].Top = newpos.top;
+		} //if
+		else
+		{
+			// tile from bottom to top
+			// then from right to left
+			long top = tileMap[location.ImageName].Top - newpos.bottom - 3;
+			if (top < 0L)
+			{
+				top = newpos.top;
+				tileMap[location.ImageName].Left -= (newpos.right + 3);
+			} //if
+
+			newpos.top = top;
+			newpos.left = tileMap[location.ImageName].Left;
+
+			tileMap[location.ImageName].Top = newpos.top;
+		} //else
+	} //if
+
+	sprintf_s(buffer, "RepositionProcess \t NEW POS: width: %d, height: %d, left: %d, top: %d\0", newpos.right, newpos.bottom, newpos.left, newpos.top);  debug(buffer);
+	SetWindowPos(process.WindowHandle, NULL, newpos.left, newpos.top, newpos.right, newpos.bottom, NULL);
 
 
 }

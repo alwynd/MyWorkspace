@@ -118,8 +118,9 @@ struct ProcessLocation
 };
 
 
-bool ProcessLocations(std::vector<RunningProcess>& processes, std::vector<ProcessLocation>& locations);		// Processes locations.
-void RepositionProcess(const RunningProcess& process, std::vector<ProcessLocation>& locations);				// Reposition the process
+bool ProcessLocations(const std::vector<RunningProcess>& processes, const std::vector<ProcessLocation>& locations);		// Processes locations.
+void RepositionProcess(const RunningProcess& process, const std::vector<ProcessLocation>& locations);				// Reposition the process
+bool FindLocationForProcessAndTitle(const RunningProcess& process, const std::vector<ProcessLocation>& locations, ProcessLocation& outLocation);
 
 bool FileExists(const char* file);								// Does file exist.
 bool ParseLocations(std::vector<ProcessLocation>& locations);	// Parses locations
